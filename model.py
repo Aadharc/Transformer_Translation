@@ -31,10 +31,11 @@ class PositionalEncoding(nn.Module):
 
         pe = pe.unsqueeze(0)  # (1, seq_len, d_model)
 
-        self.register_buffer("pe", pe)
+        self.register_buffer('pe', pe)
 
     def forward(self, x):
         x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False)
+        return self.dropout(x)
 
 class LayerNormalization(nn.Module):
 
@@ -154,7 +155,7 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x, encoder_output, src_mask, tgt_mask):
         x = self.residual_connections[0](x, lambda x: self.self_attention_block(x, x, x, tgt_mask))
-        x = self.residual_connections[1](x, self.cross_attention_block(x, encoder_output, encoder_output, src_mask))
+        x = self.residual_connections[1](x, lambda x: self.cross_attention_block(x, encoder_output, encoder_output, src_mask))
         x = self.residual_connections[2](x, self.feed_forward_block)
         return x
     
@@ -182,7 +183,8 @@ class ProjectionLayer(nn.Module):
     
 class Transformer(nn.Module):
 
-    def __init__(self, encoder: Encoder, decoder: Decoder, src_embeddings: InputEmbeddings, tgt_embeddings: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, projection_layer: ProjectionLayer) -> None:
+    def __init__(self, encoder: Encoder, decoder: Decoder, src_embeddings: InputEmbeddings, tgt_embeddings: InputEmbeddings, 
+                 src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, projection_layer: ProjectionLayer) -> None:
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
@@ -192,10 +194,10 @@ class Transformer(nn.Module):
         self.tgt_pos = tgt_pos
         self.projection_layer = projection_layer
         
-    def encode(self, src, src_mask):
-        src = self.src_embeddings(src)
-        src = self.src_pos(src)
-        return self.encoder(src, src_mask)
+    def encode(self, x, src_mask):
+        x = self.src_embeddings(x)
+        x = self.src_pos(x)
+        return self.encoder(x, src_mask)
     
     def decode(self, encoder_output, src_mask, tgt, tgt_mask):
         tgt = self.tgt_embeddings(tgt)
@@ -205,7 +207,8 @@ class Transformer(nn.Module):
     def project(self, x):
         return self.projection_layer(x)
     
-def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int = 512, N : int = 6, h:int = 8, dropout:float = 0.1, d_ff:int = 2048) -> Transformer:
+def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, 
+                      d_model: int = 512, N : int = 6, h:int = 8, dropout:float = 0.1, d_ff:int = 2048) -> Transformer:
     #create the embedding layers
     src_embeddings = InputEmbeddings(d_model, src_vocab_size)
     tgt_embeddings = InputEmbeddings(d_model, tgt_vocab_size)
@@ -246,7 +249,7 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
 
     #initialize the parameters
     for p in transformer.parameters():
-        if p.dim > 1:
+        if p.dim() > 1:
             nn.init.xavier_uniform_(p)
 
     return transformer
